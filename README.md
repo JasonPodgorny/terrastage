@@ -34,14 +34,14 @@ __Otherwise, use temporary instances / temporary directories that are being disc
 
 ```
 Usage of terrastage:
-  -fullrepo
-        Download Full Repo Directory Like Terragrunt Normally Would
   -stagedir string
-        Directory To Stage To (default "c:/temp/infra-stage")
+        Directory To Stage To (default ".")
   -subdirvar string
         Variable For Subdirectory Within Stage Directory (default "module_path")
   -verbose
         Verbose Outputs
+  -debug
+        Debug Outputs
   -workdir string
         Working Directory For Expression (default ".")
 ```
@@ -93,6 +93,13 @@ PS C:\temp\infra-live\dev\centralus\myterragruntmodule> terrastage.exe
 [terrastage] 2021/01/28 13:48:49 Variables passed to terraform are located in "c:\temp\infra-stage\dev\centralus\myterragruntmodule\test.auto.tfvars.json"
 [terrastage] 2021/01/28 13:48:49 Run this command to replicate how terraform was invoked:
 [terrastage] 2021/01/28 13:48:49        terraform  -var-file="c:\temp\infra-stage\dev\centralus\myterragruntmodule\test.auto.tfvars.json" "c:/temp/infra-stage/dev/centralus/myterragruntmodule"
+
+time=2024-03-28T07:18:40-04:00 level=info msg=Downloading Terraform configurations from file://C:/temp/infra-mod/modules/myterragruntmodule into C:/temp/infra-live/dev/centralus/myterragruntmodule/.terrastage/
+time=2024-03-28T07:18:42-04:00 level=info msg=Generating backend config file backend.config in working dir C:/temp/infra-live/dev/centralus/myterragruntmodule/.terrastage/
+time=2024-03-28T07:18:42-04:00 level=info msg=Generating TFVARS file test.auto.tfvars.json in working dir C:/temp/infra-live/dev/centralus/myterragruntmodule/.terrastage/
+time=2024-03-28T07:18:42-04:00 level=info msg=Variables passed to terraform are located in "C:\temp\infra-live\dev\centralus\myterragruntmodule\.terrastage\test.auto.tfvars.json"
+time=2024-03-28T07:18:42-04:00 level=info msg=Run this command to replicate how terraform was invoked:
+time=2024-03-28T07:18:42-04:00 level=info msg=  terraform -chdir="C:\temp\infra-live\dev\centralus\myterragruntmodule\.terrastage"  -var-file="C:\temp\infra-live\dev\centralus\myterragruntmodule\.terrastage\test.auto.tfvars.json"
 ```
 
 ## Terraform Init
@@ -100,7 +107,7 @@ PS C:\temp\infra-live\dev\centralus\myterragruntmodule> terrastage.exe
 If you are using generate blocks to generate a full backend configuration file, you can simply go to the staging directory and perform your terraform init:
 
 ```
-PS C:\temp\infra-stage\dev\centralus\myterragruntmodule> terraform init
+PS C:\temp\infra-live\dev\centralus\myterragruntmodule\.terrastage> terraform init
 
 Initializing modules...
 - examplemodule in ..\lib\examplemodule
@@ -140,7 +147,7 @@ commands will detect it and remind you to do so if necessary.
 If you are using remote state blocks that don't use the generate feature, terragrunt normally passed those in the init phase using var statements.   A backend.config file has been created using those values so these can instead be initialized using the following command:
 
 ```
-PS C:\temp\infra-stage\dev\centralus\myterragruntmodule> terraform init -backend-config="backend.config"
+PS C:\temp\infra-live\dev\centralus\myterragruntmodule\.terrastage> terraform init -backend-config="backend.config"
 
 Initializing modules...
 - examplemodule in ..\lib\examplemodule
@@ -182,8 +189,8 @@ commands will detect it and remind you to do so if necessary.
 Once you have initialized the directory, you can now execute any native terraform commands against this folder directly.   
 
 ```
-PS C:\temp\infra-stage\dev\centralus\myterragruntmodule> terraform plan
-PS C:\temp\infra-stage\dev\centralus\myterragruntmodule> terraform apply
+PS C:\temp\infra-live\dev\centralus\myterragruntmodule\.terrastage> terraform plan
+PS C:\temp\infra-live\dev\centralus\myterragruntmodule\.terrastage> terraform apply
 etc...
 ```
 

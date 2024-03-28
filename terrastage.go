@@ -20,9 +20,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/gruntwork-io/go-commons/errors"
 	"github.com/gruntwork-io/terragrunt/codegen"
 	"github.com/gruntwork-io/terragrunt/config"
-	"github.com/gruntwork-io/terragrunt/errors"
 	"github.com/gruntwork-io/terragrunt/options"
 	"github.com/gruntwork-io/terragrunt/util"
 )
@@ -34,16 +34,13 @@ const CMD_INIT_FROM_MODULE = "init-from-module"
 
 func main() {
 
-	// Set Up Logging
-	infoLog := log.New(os.Stdout, "INFO\t", log.Ldate|log.Ltime)
-	errorLog := log.New(os.Stderr, "ERROR\t", log.Ldate|log.Ltime)
-
 	// Set Flag Arguments And Parse Inputs
-	stagedir := flag.String("stagedir", "c:/temp/infra-stage", "Directory To Stage To")
+	stagedir := flag.String("stagedir", ".", "Directory To Stage To")
 	workdir := flag.String("workdir", ".", "Working Directory For Expression")
 	subdirvar := flag.String("subdirvar", "module_path", "Variable For Subdirectory Within Stage Directory")
-	fullrepo := flag.Bool("fullrepo", false, "Download Full Repo Directory Like Terragrunt Normally Would")
+	//fullrepo := flag.Bool("fullrepo", false, "Download Full Repo Directory Like Terragrunt Normally Would")
 	verbose := flag.Bool("verbose", false, "Verbose Outputs")
+	debug := flag.Bool("debug", false, "Debug Outputs")
 	flag.Parse()
 
 	// Get Leftover Arguments After Flag Parsing.
@@ -56,36 +53,59 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Add Trailing Slash To Working Directory
-	*workdir = filepath.Join(*workdir, "terragrunt.hcl")
-
-	// Log Working Directory If Output Is Verbose
-	if *verbose {
-		infoLog.Printf("Workdir: \n%s\n\n", *workdir)
-	}
-
-	// Log Stage Directory If Output Is Verbose
-	if *verbose {
-		infoLog.Printf("Stage Dir: \n%s\n\n", *stagedir)
-	}
-
-	// Log Stage Subdir Variable If Output Is Verbose
-	if *verbose {
-		infoLog.Printf("Stage Subdir Variable: \n%s\n\n", *subdirvar)
-	}
-
 	// Set Up Default Set Of Terragrunt Options
-	// If Errors, Log And Exit
-	terragruntOptions, err := options.NewTerragruntOptions(*workdir)
-	if err != nil {
-		errorLog.Fatalf("Get Options Had The Following Errors: %s", err)
+	terragruntOptions := options.NewTerragruntOptions()
+
+	// Set Log Level To Debug If -debug Flag Is Set
+	if *debug {
+		logLevel := util.ParseLogLevel("debug")
+		terragruntOptions.Logger = util.CreateLogEntry("", logLevel)
 	}
+
+	// If Workdir Is . Then Get Current Path
+	if *workdir == "." {
+		path, err := os.Getwd()
+		if err != nil {
+			log.Println(err)
+		}
+		*workdir = path
+	}
+
+	// Add Trailing Slash To Working Directory
+	*workdir = *workdir + string(os.PathSeparator)
+
+	// If Stagedir Is . Then Get Current Path
+	if *stagedir == "." {
+		path, err := os.Getwd()
+		if err != nil {
+			log.Println(err)
+		}
+		*stagedir = path
+		*stagedir = *stagedir + string(os.PathSeparator) + ".terrastage"
+	}
+
+	// Add Trailing Slash To Stage Directory
+	*stagedir = *stagedir + string(os.PathSeparator)
+
+	// Set Config Path
+	configPath := filepath.Join(*workdir, "terragrunt.hcl")
+
+	// Log Working Directory, Stage Directory, and Stage Subdirectory If Output Is Debug
+	if *verbose {
+		terragruntOptions.Logger.Infof("Workdir: %s", *workdir)
+		terragruntOptions.Logger.Infof("Stage Dir: %s", *stagedir)
+		terragruntOptions.Logger.Infof("Stage Subdir Variable: %s", *subdirvar)
+		//infoLog.Printf("Workdir: \n%s\n\n", *workdir)
+	}
+
+	// Set Woring Dir To Working Dir
+	terragruntOptions.WorkingDir = *workdir
+
+	// Set Config Path To Config Path
+	terragruntOptions.TerragruntConfigPath = configPath
 
 	// Set Download Dir To Staging Dir
 	terragruntOptions.DownloadDir = *stagedir
-
-	// Change Logger To Refer To Terrastage
-	terragruntOptions.Logger = log.New(os.Stderr, "[terrastage] ", log.LstdFlags)
 
 	// Parse Environment Variables And Add To Terragrunt Options
 	terragruntOptions.Env = parseEnvironmentVariables(os.Environ())
@@ -93,12 +113,16 @@ func main() {
 	// Read Terragrunt Config File
 	terragruntConfig, err := config.ReadTerragruntConfig(terragruntOptions)
 	if err != nil {
-		errorLog.Printf("Read Terragrunt Config Had The Following Errors: %s", err)
+		terragruntOptions.Logger.Errorf("Read Terragrunt Config Had The Following Errors: %s", err)
 	}
 
 	// See If Source URL Is Included In Terragrunt Config, If So Process That Source
 	updatedTerragruntOptions := terragruntOptions
-	if sourceUrl := getTerraformSourceUrl(terragruntOptions, terragruntConfig); sourceUrl != "" {
+	sourceUrl, err := config.GetTerraformSourceUrl(terragruntOptions, terragruntConfig)
+	if err != nil {
+		terragruntOptions.Logger.Errorf("Get Source URL Had The Following Errors: %s", err)
+	}
+	if sourceUrl != "" {
 
 		// Get The Staging Subdirectory Variable From An Input Variable In The Terragrunt Config.
 		// The Variable To Be Used Can Be Specified On The Command Line And Defaults To module_path.
@@ -106,22 +130,26 @@ func main() {
 		// This Is So That The Directory Structure Mirrors The Directory Structure Of The Source Relative
 		// To The Include.   Other Strategies Are Possible, And Using A Variable From Terragrunt Inputs
 		// Makes This Extremely Flexible
-		stageSubDir := terragruntConfig.Inputs[*subdirvar].(string)
+		stageSubDir := ""
+		if terragruntConfig.Inputs[*subdirvar] != nil {
+			stageSubDir = terragruntConfig.Inputs[*subdirvar].(string)
+		}
+
 		// Log Stage Subdir If Output Is Verbose
 		if *verbose {
-			infoLog.Printf("Stage Subdir From Variable: \n%s\n\n", stageSubDir)
+			terragruntOptions.Logger.Infof("Stage Subdir From Variable: %s", stageSubDir)
 		}
 
 		// Unless We Indicate To Download Full Repo, Download Just Single Module Folder
-		if !*fullrepo {
-			// Get rid of double / in source so it only downloads source directory and not full repo
-			sourceUrl = strings.ReplaceAll(sourceUrl, "//", "/")
-		}
+		//if !*fullrepo {
+		//Get rid of double / in source so it only downloads source directory and not full repo
+		//	sourceUrl = strings.ReplaceAll(sourceUrl, "//", "/")
+		//}
 
 		// Download Using Custom Download Function
 		updatedTerragruntOptions, err = customDownloadTerraformSource(sourceUrl, stageSubDir, terragruntOptions, terragruntConfig)
 		if err != nil {
-			errorLog.Printf("Download Terraform Source Had The Following Errors: %s", err)
+			terragruntOptions.Logger.Errorf("Download Terraform Source Had The Following Errors: %s", err)
 		}
 
 	}
@@ -133,13 +161,13 @@ func main() {
 	// Handle code generation configs, both generate blocks and generate attribute of remote_state.
 	// Note that relative paths are relative to the terragrunt working dir (where terraform is called).
 	for _, config := range terragruntConfig.GenerateConfigs {
-		if err := codegen.WriteToFile(updatedTerragruntOptions.Logger, updatedTerragruntOptions.WorkingDir, config); err != nil {
-			errorLog.Printf("Generate Configs Had The Following Errors: %s", err)
+		if err := codegen.WriteToFile(updatedTerragruntOptions, updatedTerragruntOptions.WorkingDir, config); err != nil {
+			terragruntOptions.Logger.Errorf("Generate Configs Had The Following Errors: %s", err)
 		}
 	}
 	if terragruntConfig.RemoteState != nil && terragruntConfig.RemoteState.Generate != nil {
 		if err := terragruntConfig.RemoteState.GenerateTerraformCode(updatedTerragruntOptions); err != nil {
-			errorLog.Printf("Generate Terraform Code Had The Following Errors: %s", err)
+			terragruntOptions.Logger.Errorf("Generate Terraform Code Had The Following Errors: %s", err)
 		}
 	}
 
@@ -147,7 +175,7 @@ func main() {
 	// Terraform Can Then Be Initialized In This Directory With:   terraform init -backend-config "backend.config"
 	if terragruntConfig.RemoteState != nil {
 		if err := checkTerraformCodeDefinesBackend(updatedTerragruntOptions, terragruntConfig.RemoteState.Backend); err != nil {
-			errorLog.Printf("Check Teraform Code Had The Following Errors: %s", err)
+			terragruntOptions.Logger.Errorf("Check Teraform Code Had The Following Errors: %s", err)
 		}
 
 		backendConfigFile := "backend.config"
@@ -170,7 +198,7 @@ func main() {
 
 		// Write Byte Slice To Backend Config File
 		if err := ioutil.WriteFile(fileName, backendConfigContents, os.FileMode(int(0600))); err != nil {
-			errorLog.Printf("Write backend.config Had The Following Errors: %s", err)
+			terragruntOptions.Logger.Errorf("Write backend.config Had The Following Errors: %s", err)
 		}
 
 	}
@@ -178,11 +206,10 @@ func main() {
 	// Write TFVARs File To The Staging Directory.
 	// This Uses The Function That Terragrunt Debug Uses, The Log Messages
 	// Are Updated To Indicate This Is A Stage And Not A Debug.
-	err = writeTerragruntDebugFile(updatedTerragruntOptions, terragruntConfig)
+	err = WriteTerragruntDebugFile(updatedTerragruntOptions, terragruntConfig)
 	if err != nil {
-		errorLog.Printf("Write TFVARS Had The Following Errors: %s", err)
+		terragruntOptions.Logger.Errorf("Write TFVARS Had The Following Errors: %s", err)
 	}
-
 }
 
 // Got This Function From Terragrunt Options. It Was Not Exported So Added To This Package

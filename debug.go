@@ -3,63 +3,64 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/hashicorp/terraform-config-inspect/tfconfig"
-
+	"github.com/gruntwork-io/go-commons/errors"
 	"github.com/gruntwork-io/terragrunt/config"
-	"github.com/gruntwork-io/terragrunt/errors"
 	"github.com/gruntwork-io/terragrunt/options"
+	"github.com/gruntwork-io/terragrunt/terraform"
 	"github.com/gruntwork-io/terragrunt/util"
 )
 
 //const TerragruntTFVarsFile = "terragrunt-debug.tfvars.json"
-
-// Updated File Name For TFVars
 const TerragruntTFVarsFile = "test.auto.tfvars.json"
 
-// writeTerragruntDebugFile will create a tfvars file that can be used to invoke the terraform module in the same way
+const defaultPermissions = int(0600)
+
+// WriteTerragruntDebugFile will create a tfvars file that can be used to invoke the terraform module in the same way
 // that terragrunt invokes the module, so that you can debug issues with the terragrunt config.
-func writeTerragruntDebugFile(terragruntOptions *options.TerragruntOptions, terragruntConfig *config.TerragruntConfig) error {
-	terragruntOptions.Logger.Printf(
+func WriteTerragruntDebugFile(terragruntOptions *options.TerragruntOptions, terragruntConfig *config.TerragruntConfig) error {
+	terragruntOptions.Logger.Infof(
+		//"Debug mode requested: generating debug file %s in working dir %s",
 		"Generating TFVARS file %s in working dir %s",
 		TerragruntTFVarsFile,
 		terragruntOptions.WorkingDir,
 	)
 
-	variables, err := terraformModuleVariables(terragruntOptions)
+	required, optional, err := terraform.ModuleVariables(terragruntOptions.WorkingDir)
 	if err != nil {
 		return err
 	}
-	util.Debugf(terragruntOptions.Logger, "The following variables were detected in the terraform module:")
-	util.Debugf(terragruntOptions.Logger, "%v", variables)
+	variables := append(required, optional...)
+
+	terragruntOptions.Logger.Debugf("The following variables were detected in the terraform module:")
+	terragruntOptions.Logger.Debugf("%v", variables)
 
 	fileContents, err := terragruntDebugFileContents(terragruntOptions, terragruntConfig, variables)
 	if err != nil {
 		return err
 	}
 
-	// configFolder := filepath.Dir(terragruntOptions.TerragruntConfigPath)
-	// fileName := filepath.Join(configFolder, TerragruntTFVarsFile)
+	//configFolder := filepath.Dir(terragruntOptions.TerragruntConfigPath)
+	//fileName := filepath.Join(configFolder, TerragruntTFVarsFile)
 
 	// Updated Location For File Name.
 	// Points To Staging Directory / Staging Subdirectory
 	fileName := filepath.Join(terragruntOptions.WorkingDir, TerragruntTFVarsFile)
 
-	if err := ioutil.WriteFile(fileName, fileContents, os.FileMode(int(0600))); err != nil {
+	if err := os.WriteFile(fileName, fileContents, os.FileMode(defaultPermissions)); err != nil {
 		return errors.WithStackTrace(err)
 	}
 
-	terragruntOptions.Logger.Printf("Variables passed to terraform are located in \"%s\"", fileName)
-	terragruntOptions.Logger.Printf("Run this command to replicate how terraform was invoked:")
-	terragruntOptions.Logger.Printf(
-		"\tterraform %s -var-file=\"%s\" \"%s\"",
+	terragruntOptions.Logger.Infof("Variables passed to terraform are located in \"%s\"", fileName)
+	terragruntOptions.Logger.Infof("Run this command to replicate how terraform was invoked:")
+	terragruntOptions.Logger.Infof(
+		"\tterraform -chdir=\"%s\" %s -var-file=\"%s\" ",
+		terragruntOptions.WorkingDir,
 		strings.Join(terragruntOptions.TerraformCliArgs, " "),
 		fileName,
-		terragruntOptions.WorkingDir,
 	)
 	return nil
 }
@@ -79,24 +80,23 @@ func terragruntDebugFileContents(
 
 	jsonValuesByKey := make(map[string]interface{})
 	for varName, varValue := range terragruntConfig.Inputs {
-		nameAsEnvVar := fmt.Sprintf("TF_VAR_%s", varName)
+		nameAsEnvVar := fmt.Sprintf("%s_%s", terraform.TFVarPrefix, varName)
 		_, varIsInEnv := envVars[nameAsEnvVar]
 		varIsDefined := util.ListContainsElement(moduleVariables, varName)
 
 		// Only add to the file if the explicit env var does NOT exist and the variable is defined in the module.
 		// We must do this in order to avoid overriding the env var when the user follows up with a direct invocation to
 		// terraform using this file (due to the order in which terraform resolves config sources).
-		if !varIsInEnv && varIsDefined {
+		switch {
+		case !varIsInEnv && varIsDefined:
 			jsonValuesByKey[varName] = varValue
-		} else if varIsInEnv {
-			util.Debugf(
-				terragruntOptions.Logger,
+		case varIsInEnv:
+			terragruntOptions.Logger.Debugf(
 				"WARN: The variable %s was omitted from the debug file because the env var %s is already set.",
 				varName, nameAsEnvVar,
 			)
-		} else if !varIsDefined {
-			util.Debugf(
-				terragruntOptions.Logger,
+		case !varIsDefined:
+			terragruntOptions.Logger.Debugf(
 				"WARN: The variable %s was omitted because it is not defined in the terraform module.",
 				varName,
 			)
@@ -107,20 +107,4 @@ func terragruntDebugFileContents(
 		return nil, errors.WithStackTrace(err)
 	}
 	return jsonContent, nil
-}
-
-// terraformModuleVariables will return all the variables defined in the downloaded terraform modules, taking into
-// account all the generated sources.
-func terraformModuleVariables(terragruntOptions *options.TerragruntOptions) ([]string, error) {
-	modulePath := terragruntOptions.WorkingDir
-	module, diags := tfconfig.LoadModule(modulePath)
-	if diags.HasErrors() {
-		return nil, errors.WithStackTrace(diags)
-	}
-
-	variables := []string{}
-	for _, variable := range module.Variables {
-		variables = append(variables, variable.Name)
-	}
-	return variables, nil
 }
