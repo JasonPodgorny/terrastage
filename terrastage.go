@@ -91,7 +91,7 @@ func main() {
 	configPath := filepath.Join(*workdir, "terragrunt.hcl")
 
 	// Log Working Directory, Stage Directory, and Stage Subdirectory If Output Is Debug
-	if *verbose {
+	if *verbose || *debug {
 		terragruntOptions.Logger.Infof("Workdir: %s", *workdir)
 		terragruntOptions.Logger.Infof("Stage Dir: %s", *stagedir)
 		terragruntOptions.Logger.Infof("Stage Subdir Variable: %s", *subdirvar)
@@ -136,7 +136,7 @@ func main() {
 		}
 
 		// Log Stage Subdir If Output Is Verbose
-		if *verbose {
+		if *verbose || *debug {
 			terragruntOptions.Logger.Infof("Stage Subdir From Variable: %s", stageSubDir)
 		}
 
