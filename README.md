@@ -55,11 +55,12 @@ This is the base directory the terraform code should be staged to.   By default 
 ## -subdirvar
 This setting points to an input variable from your terragrunt configuration that sets the subdirectory within the stage directory that should be staged to.   By consuming this from a terragrunt input variable there is a lot of flexibility in how this variable can be populated.   A common pattern is to use this along with the include block and populate the variable using the terragrunt path_relative_to_include() function, but many options are possible.
 
-## -fullrepo
-Source statements in terragrunt and terraform allow you to separate your module source from the directory within that source using two forward slashes (//).   It will download all subdirectories for everything after the double forward slash.  By default the utility will strip this double slash and only stage the files inside the full folder being specified.   This option overrides this and allows you to stage using the default terragrunt / terraform behavior.
-
 ## -verbose
-A few more outputs
+A few more outputs to help troubleshoot operations
+
+## -debug
+Full debug outputs
+
 
 # Operational Details
 The [Terragrunt](https://terragrunt.gruntwork.io/) libraries are used for the program.   There are a few modifications to the base program that allow control for the placement of the "temporary files" and a couple of additions for what goes into those files.  They have some excellent documentation there on the operations of terragrunt itself.    For this helper utility the following steps occur:
@@ -82,17 +83,6 @@ Using default options it will stage the current working directory and send to c:
 
 ```
 PS C:\temp\infra-live\dev\centralus\myterragruntmodule> terrastage.exe
-
-[terrastage] 2021/01/28 13:48:49 Reading Terragrunt config file at terragrunt.hcl
-[terrastage] 2021/01/28 13:48:49 WARNING: no double-slash (//) found in source URL C:/temp/infra-mod/modules/myterragruntmodule. Relative paths in downloaded Terraform code may not work.
-[terrastage] 2021/01/28 13:48:49 Downloading Terraform configurations from file://C:/temp/infra-mod/modules/myterragruntmodule into c:/temp/infra-stage/dev/centralus/myterragruntmodule 
-[terrastage] 2021/01/28 13:48:49 Copying files from . into c:/temp/infra-stage/dev/centralus/myterragruntmodule
-[terrastage] 2021/01/28 13:48:49 Setting working directory to c:/temp/infra-stage/dev/centralus/myterragruntmodule
-[terrastage] 2021/01/28 13:48:49 Generating backend config file backend.config in working dir c:/temp/infra-stage/dev/centralus/myterragruntmodule
-[terrastage] 2021/01/28 13:48:49 Generating TFVARS file test.auto.tfvars.json in working dir c:/temp/infra-stage/dev/centralus/myterragruntmodule
-[terrastage] 2021/01/28 13:48:49 Variables passed to terraform are located in "c:\temp\infra-stage\dev\centralus\myterragruntmodule\test.auto.tfvars.json"
-[terrastage] 2021/01/28 13:48:49 Run this command to replicate how terraform was invoked:
-[terrastage] 2021/01/28 13:48:49        terraform  -var-file="c:\temp\infra-stage\dev\centralus\myterragruntmodule\test.auto.tfvars.json" "c:/temp/infra-stage/dev/centralus/myterragruntmodule"
 
 time=2024-03-28T07:18:40-04:00 level=info msg=Downloading Terraform configurations from file://C:/temp/infra-mod/modules/myterragruntmodule into C:/temp/infra-live/dev/centralus/myterragruntmodule/.terrastage/
 time=2024-03-28T07:18:42-04:00 level=info msg=Generating backend config file backend.config in working dir C:/temp/infra-live/dev/centralus/myterragruntmodule/.terrastage/
